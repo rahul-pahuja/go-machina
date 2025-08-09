@@ -44,6 +44,11 @@ func TestNewStateMachine(t *testing.T) {
 	if sm.logger != logger {
 		t.Error("Logger not set correctly")
 	}
+
+	// Verify that metrics were initialized with no-op implementation
+	if sm.metrics == nil {
+		t.Error("Metrics not initialized")
+	}
 }
 
 func TestNewStateMachine_WithMetrics(t *testing.T) {

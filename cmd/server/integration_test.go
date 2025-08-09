@@ -134,39 +134,42 @@ func TestIntegration_ExpiryScenario(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	data := map[string]any{
+	orderData := map[string]any{
 		"processId":  "12345",
 		"expiryTime": time.Now().Add(1 * time.Hour), // Not expired
 	}
 
-	// Trigger the check event
-	currentState := "start"
-	newState, result, err := fsm.Trigger(ctx, currentState, "check", data)
+	// Trigger the "start" event
+	result, err := fsm.Trigger(ctx, "start", "check", orderData)
 	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
+		t.Fatalf("Failed to trigger start event: %v", err)
 	}
 
-	if newState != "process" {
-		t.Errorf("Expected new state to be 'process', got %s", newState)
+	// Update state and data
+	currentState := result.NewState
+	orderData = result.PersistenceData
+
+	if result.NewState != "process" {
+		t.Errorf("Expected new state to be 'process', got %s", result.NewState)
 	}
 
-	if result == nil {
-		t.Error("Expected result, got nil")
+	if result.PersistenceData == nil {
+		t.Error("Expected persistence data, got nil")
 	}
 
 	// Trigger the complete event
-	currentState = newState
-	newState, result, err = fsm.Trigger(ctx, currentState, "complete", result)
+	currentState = result.NewState
+	result, err = fsm.Trigger(ctx, currentState, "complete", result.PersistenceData)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if newState != "success" {
-		t.Errorf("Expected new state to be 'success', got %s", newState)
+	if result.NewState != "success" {
+		t.Errorf("Expected new state to be 'success', got %s", result.NewState)
 	}
 
-	if result == nil {
-		t.Error("Expected result, got nil")
+	if result.PersistenceData == nil {
+		t.Error("Expected persistence data, got nil")
 	}
 }
 
@@ -211,7 +214,7 @@ func TestIntegration_TimeoutScenario(t *testing.T) {
 	}
 
 	// Trigger the process event
-	_, _, err := fsm.Trigger(ctx, "start", "process", data)
+	_, err := fsm.Trigger(ctx, "start", "process", data)
 	if err == nil {
 		t.Error("Expected timeout error, got nil")
 	}

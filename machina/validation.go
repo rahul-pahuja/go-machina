@@ -10,6 +10,13 @@ func (wd *WorkflowDefinition) Validate() error {
 		return fmt.Errorf("workflow must have at least one state")
 	}
 
+	// Validate initial state if specified
+	if wd.InitialState != "" {
+		if _, exists := wd.States[wd.InitialState]; !exists {
+			return fmt.Errorf("initialState %s not found in states", wd.InitialState)
+		}
+	}
+
 	// Validate each state
 	for name, state := range wd.States {
 		if name != state.Name {

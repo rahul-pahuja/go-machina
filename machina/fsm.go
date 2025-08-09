@@ -15,6 +15,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// TransitionResult holds all the successful outcomes of a Trigger event.
+type TransitionResult struct {
+	NewState        string
+	AutoEvent       string
+	PersistenceData map[string]any
+}
+
 // StateMachine represents the finite state machine
 type StateMachine struct {
 	definition *WorkflowDefinition
@@ -58,6 +65,8 @@ func NewStateMachine(definition *WorkflowDefinition, registry *Registry, logger 
 		registry:   registry,
 		logger:     logger,
 		tracer:     otel.Tracer("gomachina"),
+		// Initialize with no-op metrics by default
+		metrics: NewMetrics(nil),
 	}
 
 	// Apply options
@@ -65,25 +74,11 @@ func NewStateMachine(definition *WorkflowDefinition, registry *Registry, logger 
 		opt(sm)
 	}
 
-	// If no metrics were provided but options were given, create default metrics
-	if sm.metrics == nil {
-		for _, opt := range opts {
-			// Check if WithMetrics was provided
-			// This is a bit of a hack, but it works for our purposes
-			if fmt.Sprintf("%T", opt) == "func(*machina.StateMachine)" {
-				// This is a StateMachineOption, but we can't directly check if it's WithMetrics
-				// We'll just initialize with a default registry if any options were provided
-				sm.metrics = NewMetrics(prometheus.DefaultRegisterer)
-				break
-			}
-		}
-	}
-
 	return sm
 }
 
 // Trigger processes a single event and causes a state transition
-func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event string, payload map[string]any, guards ...ConditionFunc) (newState string, result map[string]any, err error) {
+func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event string, payload map[string]any, guards ...ConditionFunc) (*TransitionResult, error) {
 	startTime := time.Now()
 
 	// Create a span for tracing
@@ -101,7 +96,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 		sm.recordTransitionError(currentState, event, "state_not_found", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return "", nil, err
+		return nil, err
 	}
 
 	sm.logger.Info("Processing event", "state", currentState, "event", event, "payload", payload)
@@ -113,7 +108,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 		sm.recordTransitionError(currentState, event, "transition_not_found", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return "", nil, err
+		return nil, err
 	}
 
 	span.SetAttributes(
@@ -124,6 +119,12 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 
 	sm.logger.Info("Found transition", "event", event, "target", transition.Target, "conditions", transition.Conditions, "actions", transition.Actions)
 
+	// Initialize persistenceData as a copy of the payload to avoid modifying the original
+	persistenceData := make(map[string]any)
+	for k, v := range payload {
+		persistenceData[k] = v
+	}
+
 	// Check all conditions for the transition
 	for _, conditionName := range transition.Conditions {
 		condition, err := sm.registry.GetCondition(conditionName)
@@ -132,7 +133,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "condition_not_found", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Evaluating condition", "condition", conditionName)
@@ -142,7 +143,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "condition_error", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		if !ok {
@@ -151,7 +152,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			sm.logger.Info("Condition evaluated to false", "condition", conditionName)
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Condition passed", "condition", conditionName)
@@ -166,7 +167,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "guard_error", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		if !ok {
@@ -175,7 +176,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			sm.logger.Info("Guard condition evaluated to false", "guardIndex", i)
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Guard condition passed", "guardIndex", i)
@@ -189,7 +190,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "onleave_action_not_found", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Executing OnLeave action", "action", actionName)
@@ -199,13 +200,13 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "onleave_action_error", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
-		// Update payload with result
+		// Update persistenceData with result
 		if result != nil {
-			payload = sm.mergeData(payload, result)
-			sm.logger.Info("OnLeave action updated payload", "action", actionName, "updates", result)
+			persistenceData = sm.mergeData(persistenceData, result)
+			sm.logger.Info("OnLeave action updated persistenceData", "action", actionName, "updates", result)
 		}
 	}
 
@@ -217,7 +218,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "transition_action_not_found", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Executing transition action", "action", actionName)
@@ -227,13 +228,13 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "transition_action_error", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
-		// Update payload with result
+		// Update persistenceData with result
 		if result != nil {
-			payload = sm.mergeData(payload, result)
-			sm.logger.Info("Transition action updated payload", "action", actionName, "updates", result)
+			persistenceData = sm.mergeData(persistenceData, result)
+			sm.logger.Info("Transition action updated persistenceData", "action", actionName, "updates", result)
 		}
 	}
 
@@ -244,7 +245,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 		sm.recordTransitionError(currentState, event, "target_state_not_found", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return "", nil, err
+		return nil, err
 	}
 
 	for _, actionName := range targetStateDef.OnEnter {
@@ -254,7 +255,7 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "onenter_action_not_found", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
 		sm.logger.Info("Executing OnEnter action", "action", actionName)
@@ -264,13 +265,13 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 			sm.recordTransitionError(currentState, event, "onenter_action_error", err)
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-			return "", nil, err
+			return nil, err
 		}
 
-		// Update payload with result
+		// Update persistenceData with result
 		if result != nil {
-			payload = sm.mergeData(payload, result)
-			sm.logger.Info("OnEnter action updated payload", "action", actionName, "updates", result)
+			persistenceData = sm.mergeData(persistenceData, result)
+			sm.logger.Info("OnEnter action updated persistenceData", "action", actionName, "updates", result)
 		}
 	}
 
@@ -292,7 +293,11 @@ func (sm *StateMachine) Trigger(ctx context.Context, currentState string, event 
 		attribute.Float64("fsm.duration_seconds", duration),
 	)
 
-	return transition.Target, payload, nil
+	return &TransitionResult{
+		NewState:        transition.Target,
+		AutoEvent:       transition.AutoEvent,
+		PersistenceData: persistenceData,
+	}, nil
 }
 
 // GetAutoEventForTransition returns the auto event for a transition, if any

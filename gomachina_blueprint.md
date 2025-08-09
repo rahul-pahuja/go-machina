@@ -28,6 +28,8 @@ To provide the Go ecosystem with a powerful, declarative, and observable state m
 | **Condition** | Logic that determines if a transition should occur. |
 | **Action**    | Business logic executed within a state. |
 | **Registry**  | Holds mappings of condition and action implementations. |
+| **InitialState** | The starting state of the workflow, defined in the configuration. |
+| **TransitionResult** | The result of a state transition, containing the new state, any auto-event, and persistence data. |
 
 ---
 
@@ -88,6 +90,7 @@ type ActionFunc func(ctx context.Context, data map[string]any) (map[string]any, 
 
 ## 6. Example Configuration (YAML)
 ```yaml
+initialState: start
 states:
   start:
     name: start
@@ -147,14 +150,14 @@ states:
 ---
 
 ## 9. Sample Use Case — Payment Workflow
-1. **Config File:** Defines `start → processOrder → complete`.
+1. **Config File:** Defines `initialState: start` and states `start → processOrder → complete`.
 2. **Conditions:**
    - `isUserValid`
    - `isPaymentSuccess`
 3. **Actions:**
    - `chargePayment`
    - `sendReceipt`
-4. **Execution:** FSM processes events sequentially using `fsm.Trigger()`, transitions only on passing conditions.
+4. **Execution:** FSM processes events sequentially using `fsm.Trigger()`, transitions only on passing conditions. The result is returned as a `TransitionResult` struct containing the new state, any auto-event, and persistence data.
 
 ---
 
@@ -162,6 +165,8 @@ states:
 - Implement `ConditionFunc` and `ActionFunc` function types for custom logic.
 - Register them in the FSM registry using `RegisterCondition` and `RegisterAction`.
 - Use `WithMetrics` and `WithTracer` options to customize observability.
+- Access the `InitialState` from the workflow definition to start workflows without hardcoding the initial state.
+- Handle `AutoEvent` from the `TransitionResult` to implement auto-trigger loops.
 
 ---
 
@@ -189,6 +194,7 @@ The core `StateMachine` struct is responsible for:
 - Validating transitions based on conditions
 - Executing actions in the correct order
 - Managing the registry of user-provided implementations
+- Returning results as `TransitionResult` structs containing the new state, any auto-event, and persistence data
 
 ### 12.2. Configuration Loader
 The configuration loader is responsible for:
@@ -223,18 +229,21 @@ Errors are handled using Go's idiomatic approach:
 - Functions return an error value as the last return parameter
 - Errors are wrapped using `fmt.Errorf` with `%w` verb for error inspection
 - Sentinel errors are provided for common failure cases
+- Successful operations return a `TransitionResult` struct containing the new state, any auto-event, and persistence data
 
 ### 13.3. Concurrency Safety
 The library is designed to be safe for concurrent use:
 - The registry uses mutexes to protect shared state
 - The state machine engine is stateless (state is passed as parameters)
 - All public APIs are safe for concurrent access
+- The `TransitionResult` struct is immutable after creation
 
 ### 13.4. Extensibility
 The library is designed to be extensible:
 - Users provide their own implementations of conditions and actions
 - The registry allows for dynamic registration of implementations
 - Observability features can be customized or extended
+- The `TransitionResult` struct can be extended in future versions without breaking existing code
 
 ---
 
