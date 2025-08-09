@@ -18,6 +18,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set initial state if not already set
+	if definition.InitialState == "" {
+		definition.InitialState = "start"
+	}
+
 	// Create registry and register conditions/actions
 	registry := machina.NewRegistry()
 
@@ -53,28 +58,56 @@ func main() {
 
 	slog.Info("Starting workflow execution")
 
-	// Start state
-	currentState := "start"
+	// Start with initial state from definition
+	currentState := definition.InitialState
 
-	// Trigger validate event
-	newState, result, err := fsm.Trigger(ctx, currentState, "validate", orderData)
-	if err != nil {
-		slog.Error("Workflow execution failed", "error", err)
-		os.Exit(1)
+	// Execute workflow with auto-event handling
+	for {
+		// In a real application, you would determine the event based on external triggers
+		// For this example, we'll use predefined events
+		event := ""
+		switch currentState {
+		case "start":
+			event = "validate"
+		case "processOrder":
+			// Simulate random success/failure for the process event
+			event = "process" // In a real app, this might be determined by business logic
+		default:
+			// If we don't know what event to trigger, break the loop
+			slog.Info("No event to trigger for current state", "state", currentState)
+			break
+		}
+
+		if event == "" {
+			break
+		}
+
+		// Trigger the event
+		result, err := fsm.Trigger(ctx, currentState, event, orderData)
+		if err != nil {
+			slog.Error("Workflow execution failed", "error", err)
+			os.Exit(1)
+		}
+
+		// Update state and data
+		currentState = result.NewState
+		orderData = result.PersistenceData
+
+		slog.Info("Transition completed", "newState", result.NewState, "autoEvent", result.AutoEvent)
+
+		// Handle auto events
+		if result.AutoEvent != "" {
+			slog.Info("Auto event triggered", "event", result.AutoEvent)
+			continue // Continue the loop with the auto event
+		}
+
+		// Break if we've reached a terminal state or have no more events to process
+		if currentState == "complete" || currentState == "failed" {
+			break
+		}
 	}
-	currentState = newState
-	orderData = result
 
-	// Trigger process event (with 80% success rate)
-	newState, result, err = fsm.Trigger(ctx, currentState, "process", orderData)
-	if err != nil {
-		slog.Error("Workflow execution failed", "error", err)
-		os.Exit(1)
-	}
-	currentState = newState
-	orderData = result
-
-	// If we reached the complete state, the workflow is done
+	// Final state
 	if currentState == "complete" {
 		slog.Info("Workflow completed successfully", "result", orderData)
 	} else if currentState == "failed" {

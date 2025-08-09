@@ -1,3 +1,4 @@
+initialState: start
 states:
   start:
     name: start

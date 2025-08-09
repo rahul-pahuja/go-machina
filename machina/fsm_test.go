@@ -39,19 +39,23 @@ func TestStateMachine_Trigger(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	newState, result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if newState != "end" {
-		t.Errorf("Expected new state to be 'end', got %s", newState)
+	if result.NewState != "end" {
+		t.Errorf("Expected new state to be 'end', got %s", result.NewState)
 	}
 
-	if result == nil {
-		t.Error("Expected result, got nil")
+	if result.AutoEvent != "" {
+		t.Errorf("Expected no auto event, got %s", result.AutoEvent)
+	}
+
+	if result.PersistenceData == nil {
+		t.Error("Expected persistence data, got nil")
 	}
 }
 
@@ -87,7 +91,7 @@ func TestStateMachine_Trigger_ConditionFailure(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	_, _, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -131,20 +135,24 @@ func TestStateMachine_Trigger_ActionExecution(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	newState, result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if newState != "end" {
-		t.Errorf("Expected new state to be 'end', got %s", newState)
+	if result.NewState != "end" {
+		t.Errorf("Expected new state to be 'end', got %s", result.NewState)
+	}
+
+	if result.AutoEvent != "" {
+		t.Errorf("Expected no auto event, got %s", result.AutoEvent)
 	}
 
 	// Check if the action updated the data
-	if updated, exists := result["updated"]; !exists || !updated.(bool) {
-		t.Error("Expected result to be updated by action")
+	if updated, exists := result.PersistenceData["updated"]; !exists || !updated.(bool) {
+		t.Error("Expected persistence data to be updated by action")
 	}
 }
 
@@ -180,7 +188,7 @@ func TestStateMachine_Trigger_ConditionError(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	_, _, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -224,7 +232,7 @@ func TestStateMachine_Trigger_ActionError(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	_, _, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -270,7 +278,7 @@ func TestStateMachine_Trigger_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, _, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -322,18 +330,22 @@ func TestStateMachine_Trigger_LifecycleHooks(t *testing.T) {
 
 	// Trigger event
 	ctx := context.Background()
-	newState, result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
+	result, err := fsm.Trigger(ctx, "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if newState != "end" {
-		t.Errorf("Expected new state to be 'end', got %s", newState)
+	if result.NewState != "end" {
+		t.Errorf("Expected new state to be 'end', got %s", result.NewState)
 	}
 
-	if result == nil {
-		t.Error("Expected result, got nil")
+	if result.AutoEvent != "" {
+		t.Errorf("Expected no auto event, got %s", result.AutoEvent)
+	}
+
+	if result.PersistenceData == nil {
+		t.Error("Expected persistence data, got nil")
 	}
 }

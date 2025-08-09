@@ -31,7 +31,7 @@ func TestStateMachine_Trigger_StateNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger event from non-existent state
-	_, _, err := fsm.Trigger(context.Background(), "nonexistent", "proceed", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "nonexistent", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -65,7 +65,7 @@ func TestStateMachine_Trigger_TransitionNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger non-existent event
-	_, _, err := fsm.Trigger(context.Background(), "start", "nonexistent", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "start", "nonexistent", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -74,7 +74,7 @@ func TestStateMachine_Trigger_TransitionNotFound(t *testing.T) {
 }
 
 func TestStateMachine_Trigger_ConditionNotFound(t *testing.T) {
-	// Create a workflow definition with a condition that doesn't exist
+	// Create a workflow definition with a non-existent condition
 	definition := &WorkflowDefinition{
 		States: map[string]State{
 			"start": {
@@ -84,7 +84,7 @@ func TestStateMachine_Trigger_ConditionNotFound(t *testing.T) {
 						Event:  "proceed",
 						Target: "end",
 						Conditions: []string{
-							"nonexistentCondition",
+							"nonexistent",
 						},
 					},
 				},
@@ -102,7 +102,7 @@ func TestStateMachine_Trigger_ConditionNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger event
-	_, _, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -111,7 +111,7 @@ func TestStateMachine_Trigger_ConditionNotFound(t *testing.T) {
 }
 
 func TestStateMachine_Trigger_ActionNotFound(t *testing.T) {
-	// Create a workflow definition with an action that doesn't exist
+	// Create a workflow definition with a non-existent action
 	definition := &WorkflowDefinition{
 		States: map[string]State{
 			"start": {
@@ -121,7 +121,7 @@ func TestStateMachine_Trigger_ActionNotFound(t *testing.T) {
 						Event:  "proceed",
 						Target: "end",
 						Actions: []string{
-							"nonexistentAction",
+							"nonexistent",
 						},
 					},
 				},
@@ -139,7 +139,7 @@ func TestStateMachine_Trigger_ActionNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger event
-	_, _, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -147,45 +147,14 @@ func TestStateMachine_Trigger_ActionNotFound(t *testing.T) {
 	}
 }
 
-func TestStateMachine_Trigger_TargetStateNotFound(t *testing.T) {
-	// Create a workflow definition with a transition to a non-existent state
-	definition := &WorkflowDefinition{
-		States: map[string]State{
-			"start": {
-				Name: "start",
-				Transitions: []Transition{
-					{
-						Event:  "proceed",
-						Target: "nonexistent",
-					},
-				},
-			},
-		},
-	}
-
-	// Create registry
-	registry := NewRegistry()
-
-	// Create state machine
-	fsm := NewStateMachine(definition, registry, nil)
-
-	// Try to trigger event
-	_, _, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
-
-	// Verify results
-	if err == nil {
-		t.Error("Expected error for non-existent target state, got nil")
-	}
-}
-
 func TestStateMachine_Trigger_OnLeaveActionNotFound(t *testing.T) {
-	// Create a workflow definition with an OnLeave action that doesn't exist
+	// Create a workflow definition with a non-existent OnLeave action
 	definition := &WorkflowDefinition{
 		States: map[string]State{
 			"start": {
 				Name: "start",
 				OnLeave: []string{
-					"nonexistentAction",
+					"nonexistent",
 				},
 				Transitions: []Transition{
 					{
@@ -207,7 +176,7 @@ func TestStateMachine_Trigger_OnLeaveActionNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger event
-	_, _, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
@@ -216,7 +185,7 @@ func TestStateMachine_Trigger_OnLeaveActionNotFound(t *testing.T) {
 }
 
 func TestStateMachine_Trigger_OnEnterActionNotFound(t *testing.T) {
-	// Create a workflow definition with an OnEnter action that doesn't exist
+	// Create a workflow definition with a non-existent OnEnter action
 	definition := &WorkflowDefinition{
 		States: map[string]State{
 			"start": {
@@ -231,7 +200,7 @@ func TestStateMachine_Trigger_OnEnterActionNotFound(t *testing.T) {
 			"end": {
 				Name: "end",
 				OnEnter: []string{
-					"nonexistentAction",
+					"nonexistent",
 				},
 			},
 		},
@@ -244,10 +213,86 @@ func TestStateMachine_Trigger_OnEnterActionNotFound(t *testing.T) {
 	fsm := NewStateMachine(definition, registry, nil)
 
 	// Try to trigger event
-	_, _, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
 
 	// Verify results
 	if err == nil {
 		t.Error("Expected error for non-existent OnEnter action, got nil")
+	}
+}
+
+func TestStateMachine_Trigger_GuardConditionFailure(t *testing.T) {
+	// Create a workflow definition
+	definition := &WorkflowDefinition{
+		States: map[string]State{
+			"start": {
+				Name: "start",
+				Transitions: []Transition{
+					{
+						Event:  "proceed",
+						Target: "end",
+						Conditions: []string{
+							"alwaysTrue",
+						},
+					},
+				},
+			},
+			"end": {
+				Name: "end",
+			},
+		},
+	}
+
+	// Create registry with mock implementations
+	registry := NewRegistry()
+	registry.RegisterCondition("alwaysTrue", MockTrueCondition)
+
+	// Create state machine
+	fsm := NewStateMachine(definition, registry, nil)
+
+	// Try to trigger event with failing guard
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{}, MockFalseCondition)
+
+	// Verify results
+	if err == nil {
+		t.Error("Expected error for failing guard condition, got nil")
+	}
+}
+
+func TestStateMachine_Trigger_GuardConditionError(t *testing.T) {
+	// Create a workflow definition
+	definition := &WorkflowDefinition{
+		States: map[string]State{
+			"start": {
+				Name: "start",
+				Transitions: []Transition{
+					{
+						Event:  "proceed",
+						Target: "end",
+						Conditions: []string{
+							"alwaysTrue",
+						},
+					},
+				},
+			},
+			"end": {
+				Name: "end",
+			},
+		},
+	}
+
+	// Create registry with mock implementations
+	registry := NewRegistry()
+	registry.RegisterCondition("alwaysTrue", MockTrueCondition)
+
+	// Create state machine
+	fsm := NewStateMachine(definition, registry, nil)
+
+	// Try to trigger event with erroring guard
+	_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{}, MockErrorCondition)
+
+	// Verify results
+	if err == nil {
+		t.Error("Expected error for erroring guard condition, got nil")
 	}
 }

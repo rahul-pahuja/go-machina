@@ -44,7 +44,7 @@ func TestMetrics(t *testing.T) {
 	sm := NewStateMachine(definition, registry, logger, WithMetrics(reg), WithTracer(noop.NewTracerProvider().Tracer("test")))
 
 	// Perform a transition
-	_, _, err := sm.Trigger(context.Background(), "start", "next", map[string]any{})
+	_, err := sm.Trigger(context.Background(), "start", "next", map[string]any{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestMetricsError(t *testing.T) {
 	sm := NewStateMachine(definition, registry, logger, WithMetrics(reg), WithTracer(noop.NewTracerProvider().Tracer("test")))
 
 	// Try to perform a transition with a non-existent event
-	_, _, err := sm.Trigger(context.Background(), "start", "nonexistent", map[string]any{})
+	_, err := sm.Trigger(context.Background(), "start", "nonexistent", map[string]any{})
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -133,7 +133,7 @@ func TestMetricsAutoTransition(t *testing.T) {
 	sm := NewStateMachine(definition, registry, logger, WithMetrics(reg), WithTracer(noop.NewTracerProvider().Tracer("test")))
 
 	// Perform a transition
-	_, _, err := sm.Trigger(context.Background(), "start", "next", map[string]any{})
+	_, err := sm.Trigger(context.Background(), "start", "next", map[string]any{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

@@ -19,5 +19,6 @@ type Transition struct {
 
 // WorkflowDefinition represents the entire workflow configuration
 type WorkflowDefinition struct {
-	States map[string]State `yaml:"states" json:"states"`
+	InitialState string           `yaml:"initialState,omitempty" json:"initialState,omitempty"`
+	States       map[string]State `yaml:"states" json:"states"`
 }
