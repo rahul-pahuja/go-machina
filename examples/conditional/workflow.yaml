@@ -1,0 +1,39 @@
+states:
+  A:
+    name: A
+    onEnter:
+      - logAction
+    transitions:
+      - event: process
+        target: B
+        conditions:
+          - isEven
+      - event: process
+        target: C
+        conditions:
+          - isOdd
+  B:
+    name: B
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: D
+  C:
+    name: C
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: E
+  D:
+    name: D
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: E
+  E:
+    name: E
+    onEnter:
+      - logAction

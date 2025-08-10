@@ -5,10 +5,110 @@ import (
 )
 
 func TestWorkflowDefinition_Validate(t *testing.T) {
-	// Test valid workflow definition
-	validWorkflow := &WorkflowDefinition{
-		States: map[string]State{
-			"start": {
+	tests := []struct {
+		name        string
+		definition  *WorkflowDefinition
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "ValidWorkflow",
+			definition: &WorkflowDefinition{
+				States: map[string]State{
+					"start": {
+						Name: "start",
+						Transitions: []Transition{
+							{
+								Event:  "proceed",
+								Target: "end",
+							},
+						},
+					},
+					"end": {
+						Name: "end",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "ValidWorkflowWithInitialState",
+			definition: &WorkflowDefinition{
+				InitialState: "start",
+				States: map[string]State{
+					"start": {
+						Name: "start",
+					},
+					"end": {
+						Name: "end",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "EmptyWorkflow",
+			definition: &WorkflowDefinition{
+				States: map[string]State{},
+			},
+			expectError: true,
+			errorMsg:    "workflow must have at least one state",
+		},
+		{
+			name: "MismatchedStateKeyAndName",
+			definition: &WorkflowDefinition{
+				States: map[string]State{
+					"start": {
+						Name: "different",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "state key start does not match state name different",
+		},
+		{
+			name: "InvalidInitialState",
+			definition: &WorkflowDefinition{
+				InitialState: "nonexistent",
+				States: map[string]State{
+					"start": {
+						Name: "start",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "initialState nonexistent not found in states",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.definition.Validate()
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				} else if err.Error() != tt.errorMsg {
+					t.Errorf("Expected error message '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestState_Validate(t *testing.T) {
+	tests := []struct {
+		name        string
+		state       *State
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "ValidState",
+			state: &State{
 				Name: "start",
 				Transitions: []Transition{
 					{
@@ -17,129 +117,177 @@ func TestWorkflowDefinition_Validate(t *testing.T) {
 					},
 				},
 			},
-			"end": {
-				Name: "end",
+			expectError: false,
+		},
+		{
+			name: "ValidStateWithSideQuest",
+			state: &State{
+				Name:        "sideQuest",
+				IsSideQuest: true,
+				Transitions: []Transition{
+					{
+						Event:  "proceed",
+						Target: "end",
+					},
+				},
 			},
+			expectError: false,
+		},
+		{
+			name: "StateWithNoName",
+			state: &State{
+				Name: "",
+				Transitions: []Transition{
+					{
+						Event:  "proceed",
+						Target: "end",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "state must have a name",
+		},
+		{
+			name: "StateWithInvalidTransition",
+			state: &State{
+				Name: "start",
+				Transitions: []Transition{
+					{
+						Event:  "",
+						Target: "end",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "invalid transition for event : transition must have an event",
 		},
 	}
 
-	if err := validWorkflow.Validate(); err != nil {
-		t.Errorf("Expected valid workflow, got error: %v", err)
-	}
-
-	// Test workflow with no states
-	emptyWorkflow := &WorkflowDefinition{
-		States: map[string]State{},
-	}
-
-	if err := emptyWorkflow.Validate(); err == nil {
-		t.Error("Expected error for empty workflow, got nil")
-	}
-
-	// Test workflow with mismatched state key and name
-	mismatchedWorkflow := &WorkflowDefinition{
-		States: map[string]State{
-			"start": {
-				Name: "different",
-			},
-		},
-	}
-
-	if err := mismatchedWorkflow.Validate(); err == nil {
-		t.Error("Expected error for mismatched state key and name, got nil")
-	}
-}
-
-func TestState_Validate(t *testing.T) {
-	// Test valid state
-	validState := &State{
-		Name: "start",
-		Transitions: []Transition{
-			{
-				Event:  "proceed",
-				Target: "end",
-			},
-		},
-	}
-
-	if err := validState.Validate(); err != nil {
-		t.Errorf("Expected valid state, got error: %v", err)
-	}
-
-	// Test state with no name
-	invalidState := &State{
-		Name: "",
-		Transitions: []Transition{
-			{
-				Event:  "proceed",
-				Target: "end",
-			},
-		},
-	}
-
-	if err := invalidState.Validate(); err == nil {
-		t.Error("Expected error for invalid state, got nil")
-	}
-
-	// Test state with invalid transition (no event)
-	invalidTransitionState := &State{
-		Name: "start",
-		Transitions: []Transition{
-			{
-				Event:  "",
-				Target: "end",
-			},
-		},
-	}
-
-	if err := invalidTransitionState.Validate(); err == nil {
-		t.Error("Expected error for invalid transition, got nil")
-	}
-
-	// Test state with invalid transition (no target)
-	invalidTransitionState2 := &State{
-		Name: "start",
-		Transitions: []Transition{
-			{
-				Event:  "proceed",
-				Target: "",
-			},
-		},
-	}
-
-	if err := invalidTransitionState2.Validate(); err == nil {
-		t.Error("Expected error for invalid transition, got nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.state.Validate()
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				} else if err.Error() != tt.errorMsg {
+					t.Errorf("Expected error message '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+		})
 	}
 }
 
 func TestTransition_Validate(t *testing.T) {
-	// Test valid transition
-	validTransition := &Transition{
-		Event:  "proceed",
-		Target: "end",
+	tests := []struct {
+		name        string
+		transition  *Transition
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "ValidTransition",
+			transition: &Transition{
+				Event:  "proceed",
+				Target: "end",
+			},
+			expectError: false,
+		},
+		{
+			name: "TransitionWithNoEvent",
+			transition: &Transition{
+				Event:  "",
+				Target: "end",
+			},
+			expectError: true,
+			errorMsg:    "transition must have an event",
+		},
 	}
 
-	if err := validTransition.Validate(); err != nil {
-		t.Errorf("Expected valid transition, got error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.transition.Validate()
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				} else if err.Error() != tt.errorMsg {
+					t.Errorf("Expected error message '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkflowDefinition_InitialState(t *testing.T) {
+	tests := []struct {
+		name        string
+		definition  *WorkflowDefinition
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "ValidInitialState",
+			definition: &WorkflowDefinition{
+				InitialState: "start",
+				States: map[string]State{
+					"start": {
+						Name: "start",
+					},
+					"end": {
+						Name: "end",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "InvalidInitialState",
+			definition: &WorkflowDefinition{
+				InitialState: "nonexistent",
+				States: map[string]State{
+					"start": {
+						Name: "start",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "initialState nonexistent not found in states",
+		},
+		{
+			name: "EmptyInitialState",
+			definition: &WorkflowDefinition{
+				InitialState: "",
+				States: map[string]State{
+					"start": {
+						Name: "start",
+					},
+				},
+			},
+			expectError: false,
+		},
 	}
 
-	// Test transition with no event
-	invalidTransition := &Transition{
-		Event:  "",
-		Target: "end",
-	}
-
-	if err := invalidTransition.Validate(); err == nil {
-		t.Error("Expected error for transition with no event, got nil")
-	}
-
-	// Test transition with no target
-	invalidTransition2 := &Transition{
-		Event:  "proceed",
-		Target: "",
-	}
-
-	if err := invalidTransition2.Validate(); err == nil {
-		t.Error("Expected error for transition with no target, got nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.definition.Validate()
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				} else if err.Error() != tt.errorMsg {
+					t.Errorf("Expected error message '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+		})
 	}
 }

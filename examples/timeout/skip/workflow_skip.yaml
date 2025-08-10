@@ -1,0 +1,35 @@
+states:
+  A:
+    name: A
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: B
+        actions:
+          - timerAction
+  B:
+    name: B
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: C
+  C:
+    name: C
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: D
+  D:
+    name: D
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: E
+  E:
+    name: E
+    onEnter:
+      - logAction

@@ -53,9 +53,8 @@ func (t *Transition) Validate() error {
 		return fmt.Errorf("transition must have an event")
 	}
 
-	if t.Target == "" {
-		return fmt.Errorf("transition must have a target state")
-	}
+	// Target can be empty for dynamic transitions that will be determined at runtime
+	// by actions that return a __next_state_override value
 
 	return nil
 }

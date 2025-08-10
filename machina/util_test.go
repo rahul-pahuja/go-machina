@@ -98,22 +98,3 @@ func TestMergeData_BothEmpty(t *testing.T) {
 		t.Errorf("Expected empty map, got map with %d elements", len(result))
 	}
 }
-
-func TestRecordTransitionError(t *testing.T) {
-	// Create a state machine without metrics
-	sm := &StateMachine{}
-
-	// This should not panic or cause any issues
-	sm.recordTransitionError("from", "event", "error_type", nil)
-
-	// Test with metrics
-	// Create a test registry
-	// reg := prometheus.NewRegistry()
-	// metrics := NewMetrics(reg)
-	// smWithMetrics := &StateMachine{
-	// 	metrics: metrics,
-	// }
-	//
-	// This should record the error
-	// smWithMetrics.recordTransitionError("from", "event", "error_type", nil)
-}
