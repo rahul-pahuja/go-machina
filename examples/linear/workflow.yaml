@@ -1,0 +1,19 @@
+states:
+  A:
+    name: A
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: B
+  B:
+    name: B
+    onEnter:
+      - logAction
+    transitions:
+      - event: next
+        target: C
+  C:
+    name: C
+    onEnter:
+      - logAction

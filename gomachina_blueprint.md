@@ -190,11 +190,13 @@ The optional metrics and tracing capabilities are implemented using the Decorato
 
 ### 12.1. State Machine Engine
 The core `StateMachine` struct is responsible for:
-- Processing events and triggering state transitions
-- Validating transitions based on conditions
-- Executing actions in the correct order
-- Managing the registry of user-provided implementations
-- Returning results as `TransitionResult` structs containing the new state, any auto-event, and persistence data
+- Processing events to find a matching transition for the current state.
+- Validating the transition by executing all registered `ConditionFunc`s.
+- Executing registered `ActionFunc`s for `onLeave` (from the source state) and for the transition itself.
+- Collecting and merging persistence data returned from all executed actions.
+- **Dynamically determining the next state:** It first checks if the collected persistence data contains a special `__next_state_override` key. If so, it uses that as the target state. Otherwise, it uses the static `target` from the workflow definition.
+- Executing `onEnter` actions for the newly determined target state.
+- Returning the final result, including the new state and all persistence data, in a `TransitionResult` struct.
 
 ### 12.2. Configuration Loader
 The configuration loader is responsible for:
@@ -208,7 +210,13 @@ The registry is responsible for:
 - Providing thread-safe access to these implementations
 - Allowing users to register their custom implementations
 
-### 12.4. Observability
+### 12.4. Internal Actions & Side Quests
+To support advanced patterns like "Side Quests," the `GoMachina` engine provides built-in, pre-registered actions that can be used in any workflow definition.
+
+- A key example is `__RETURN_TO_PREVIOUS_STATE__`. This action is designed to be used in a transition to dynamically return to a previous state stored in a `WorkflowStack` (which is part of the application's context data).
+- These internal actions are automatically made available in the `Registry` during the FSM's initialization, simplifying the user's workflow configuration for common patterns.
+
+### 12.5. Observability
 The observability features include:
 - Structured logging using the `log/slog` package
 - Prometheus metrics for monitoring transition counts and durations

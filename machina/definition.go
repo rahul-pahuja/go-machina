@@ -2,6 +2,7 @@ package machina
 
 // State represents a state in the state machine configuration
 type State struct {
+	IsSideQuest bool         `yaml:"isSideQuest" json:"isSideQuest"` // New field
 	Name        string       `yaml:"name" json:"name"`
 	OnEnter     []string     `yaml:"onEnter,omitempty" json:"onEnter,omitempty"`
 	OnLeave     []string     `yaml:"onLeave,omitempty" json:"onLeave,omitempty"`

@@ -84,7 +84,7 @@ func BenchmarkStateMachine_Trigger_WithGuards(b *testing.B) {
 	// Reset timer and run benchmark
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{}, MockGuardCondition)
+		_, err := fsm.Trigger(context.Background(), "start", "proceed", map[string]any{})
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -1,38 +1,36 @@
 # GoMachina
 
-A declarative state machine engine for Go applications.
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/rahulpahuja/go-machina)](https://goreportcard.com/report/github.com/rahulpahuja/go-machina)
 [![GoDoc](https://pkg.go.dev/badge/github.com/rahulpahuja/go-machina)](https://pkg.go.dev/github.com/rahulpahuja/go-machina)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Overview
+GoMachina is a declarative, observable, and extensible state machine engine for building robust, complex workflows in Go. It empowers developers to separate workflow structure from business logic, leading to cleaner, more maintainable, and highly observable applications.
 
-GoMachina is a powerful, declarative, and observable state machine library for orchestrating complex business workflows with safety, clarity, and extensibility. It allows you to define your business logic as a finite state machine using YAML/JSON configuration files, while implementing the actual business logic in Go code.
+## Why GoMachina?
 
-## Features
+Managing state in complex processes can be challenging. GoMachina addresses this by providing a robust framework built on four core principles:
 
-- **Declarative-First**: Define state machine structure in YAML/JSON configuration files
-- **High Observability**: Built-in structured logging, metrics (Prometheus), and tracing (OpenTelemetry)
-- **Safety & Predictability**: Safe execution order (`OnLeave` → `Transition Actions` → `OnEnter`) and concurrent use
-- **Extensible & Decoupled**: Generic, domain-agnostic design with user-provided implementations
-- **Auto-Events**: Support for automatic event triggering for seamless workflow execution
-- **Validation**: Built-in validation for workflow definitions
-- **Context Support**: Full context propagation for cancellation and timeouts
+-   **Declarative-First Approach**: Define your workflow's entire structure in a clear and simple YAML file. This separation of concerns means your Go code can focus purely on business logic, while the YAML defines the flow, making the workflow easy to visualize and modify without touching the code.
+
+-   **First-Class Observability**: Stop guessing what your system is doing. GoMachina comes with production-grade, built-in observability hooks for structured logging (`slog`), metrics (Prometheus), and tracing (OpenTelemetry). This allows you to monitor, debug, and audit every state transition and action with precision.
+
+-   **Built for Concurrency & Safety**: With a stateless engine that is safe for concurrent use and a guaranteed execution order (`OnLeave` → `Transition Actions` → `OnEnter`), you can build predictable and reliable systems that behave correctly under load.
+
+-   **Powerful & Extensible by Design**: GoMachina is domain-agnostic and designed to be extended. You provide the business logic as simple Go functions, and the engine orchestrates them. It includes built-in support for advanced patterns like "Side Quests" (temporary workflow diversions) and dynamic transitions, allowing you to model even the most complex user journeys.
 
 ## Table of Contents
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Concepts](#core-concepts)
-- [Configuration](#configuration)
-- [Implementation](#implementation)
-- [Usage](#usage)
-- [Observability](#observability)
-- [Advanced Features](#advanced-features)
-- [Development](#development)
-- [Testing](#testing)
-- [License](#license)
+-   [Installation](#installation)
+-   [The GoMachina Workflow](#the-gomachina-workflow)
+-   [YAML Configuration In-Depth](#yaml-configuration-in-depth)
+-   [Implementing Business Logic](#implementing-business-logic)
+-   [Putting It All Together](#putting-it-all-together)
+-   [Advanced Pattern: Side Quests](#advanced-pattern-side-quests)
+-   [API Design & Philosophy](#api-design--philosophy)
+-   [Observability](#observability)
+-   [For Contributors](#for-contributors)
+-   [Roadmap](#roadmap)
+-   [License](#license)
 
 ## Installation
 
@@ -40,645 +38,301 @@ GoMachina is a powerful, declarative, and observable state machine library for o
 go get github.com/rahulpahuja/go-machina
 ```
 
-## Quick Start
+## The GoMachina Workflow
 
-1. Create a workflow definition (`workflow.yaml`):
+Using GoMachina follows a simple, logical lifecycle:
 
-```yaml
-initialState: start
-states:
-  start:
-    name: start
-    onEnter:
-      - "logStart"
-    transitions:
-      - event: "validate"
-        target: "processOrder"
-        conditions:
-          - "isUserValid"
+1.  **Define**: Model your entire process as a state machine in a `workflow.yaml` file.
+2.  **Implement**: Write standard Go functions for your business logic (Actions) and decision points (Conditions).
+3.  **Register**: Map the names from your YAML file to your Go functions in the GoMachina `Registry`.
+4.  **Instantiate**: Create an instance of the `StateMachine`, providing it with the loaded definition and registry.
+5.  **Execute**: Trigger events to drive the workflow, passing in application data and a context.
 
-  processOrder:
-    name: processOrder
-    onEnter:
-      - "logProcessing"
-    transitions:
-      - event: "process"
-        target: "complete"
-        actions:
-          - "chargePayment"
-        conditions:
-          - "isPaymentSuccess"
+## YAML Configuration In-Depth
 
-  complete:
-    name: complete
-    onEnter:
-      - "logCompletion"
-      - "sendReceipt"
-```
-
-2. Implement your conditions and actions:
-
-```go
-// Condition function type
-type ConditionFunc func(ctx context.Context, data map[string]any) (bool, error)
-
-// Action function type
-type ActionFunc func(ctx context.Context, data map[string]any) (map[string]any, error)
-
-// Example condition implementation
-func IsUserValidCondition(ctx context.Context, data map[string]any) (bool, error) {
-    user, ok := data["user"].(map[string]any)
-    if !ok {
-        return false, fmt.Errorf("user data not found")
-    }
-    
-    userID, ok := user["id"].(string)
-    if !ok || userID == "" {
-        return false, nil
-    }
-    
-    // In a real implementation, you would check against a database or service
-    return true, nil
-}
-
-// Example action implementation
-func ChargePaymentAction(ctx context.Context, data map[string]any) (map[string]any, error) {
-    amount, ok := data["amount"].(float64)
-    if !ok {
-        return nil, fmt.Errorf("amount not found or invalid")
-    }
-    
-    // In a real implementation, you would integrate with a payment provider
-    log.Printf("Charging payment of $%.2f", amount)
-    
-    return map[string]any{
-        "paymentStatus": "charged",
-        "chargedAt":     time.Now(),
-    }, nil
-}
-```
-
-3. Register your implementations and run the state machine:
-
-```go
-// Load workflow definition
-definition, err := machina.LoadWorkflowDefinition("workflow.yaml")
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create registry and register conditions/actions
-registry := machina.NewRegistry()
-registry.RegisterCondition("isUserValid", IsUserValidCondition)
-registry.RegisterAction("chargePayment", ChargePaymentAction)
-// ... register other conditions and actions
-
-// Create state machine with observability options
-logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-fsm := machina.NewStateMachine(definition, registry, logger,
-    machina.WithMetrics(prometheus.DefaultRegisterer),
-    machina.WithTracer(otel.Tracer("my-app")))
-
-// Execute workflow
-ctx := context.Background()
-data := map[string]any{
-    "orderId": "order-123",
-    "user": map[string]any{
-        "id":    "user-456",
-        "email": "user@example.com",
-    },
-    "amount": 99.99,
-}
-
-// Handle auto-events in a loop
-currentState := definition.InitialState
-currentData := data
-
-for {
-    // Determine the next event based on business logic
-    var event string
-    switch currentState {
-    case "start":
-        event = "validate"
-    case "processOrder":
-        event = "process"
-    default:
-        // No more events to process
-        break
-    }
-    
-    if event == "" {
-        break
-    }
-    
-    // Trigger the event
-    result, err := fsm.Trigger(ctx, currentState, event, currentData)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    // Update state and data
-    currentState = result.NewState
-    currentData = result.PersistenceData
-    
-    // Handle auto-events
-    if result.AutoEvent != "" {
-        event = result.AutoEvent
-        continue
-    }
-    
-    // Break if we've reached a terminal state
-    if currentState == "complete" || currentState == "failed" {
-        break
-    }
-}
-
-fmt.Printf("Workflow completed. Final state: %s\n", currentState)
-```
-
-## Core Concepts
-
-### State Machine
-A state machine is a mathematical model of computation that represents the behavior of a system. It consists of:
-- **States**: Discrete conditions or situations in which the system can exist
-- **Transitions**: Movements from one state to another based on events
-- **Events**: Triggers that cause transitions between states
-- **Actions**: Operations performed during transitions or when entering/leaving states
-- **Conditions**: Logical expressions that must be satisfied for transitions to occur
-
-### Workflow Definition
-The workflow definition is a declarative representation of your business process in YAML or JSON format. It defines:
-- The initial state of the workflow
-- All possible states and their properties
-- Transitions between states and the events that trigger them
-- Conditions that must be met for transitions
-- Actions to be executed during transitions or state changes
-
-### Registry
-The registry is a central component that maps condition and action names (as defined in the workflow) to their actual implementations in code. This allows for loose coupling between the workflow definition and the business logic.
-
-### Transition Result
-When a transition is triggered, the state machine returns a `TransitionResult` struct containing:
-- `NewState`: The state the machine transitioned to
-- `AutoEvent`: An optional event that should be automatically triggered next
-- `PersistenceData`: The data that should be persisted after the transition
-
-## Configuration
-
-### YAML Structure
+The `workflow.yaml` file is the heart of GoMachina. It provides a complete, declarative definition of your state machine. Here is an example showcasing many of its features using abstract `A, B, C` states.
 
 ```yaml
-initialState: start  # Optional: The initial state of the workflow
+# The state where the workflow begins.
+initialState: A
+
 states:
-  stateName:
-    name: stateName  # Must match the key
-    onEnter:         # Optional: Actions to execute when entering this state
-      - actionName1
-      - actionName2
-    onLeave:         # Optional: Actions to execute when leaving this state
-      - actionName3
+  # A unique name for the state. This key must match the `name` field below.
+  A:
+    name: A
+    # `onEnter` actions are executed every time this state is entered.
+    onEnter:
+      - "logEnteringA"
+    # `onLeave` actions are executed every time this state is exited.
+    onLeave:
+      - "logLeavingA"
     transitions:
-      - event: eventName     # The event that triggers this transition
-        target: targetState  # The state to transition to
-        conditions:          # Optional: Conditions that must be met
-          - conditionName1
-          - conditionName2
-        actions:             # Optional: Actions to execute during transition
-          - actionName4
-        autoEvent: autoEventName  # Optional: Event to automatically trigger
+      # A transition is a link from this state to another, triggered by an `event`.
+      - event: "event_to_B"
+        # `target` is the state to transition to if conditions pass.
+        target: "B"
+        # `conditions` are checks that must ALL pass for the transition to occur.
+        conditions:
+          - "isConditionForB_true"
+        # `actions` are executed only during this specific transition.
+        actions:
+          - "performActionForB"
+
+  B:
+    name: B
+    onEnter:
+      - "logEnteringB"
+    transitions:
+      - event: "event_to_C"
+        target: "C"
+        # `autoEvent` immediately triggers the next event in the chain,
+        # creating an automated workflow without external triggers.
+        autoEvent: "event_to_D"
+
+  C:
+    name: C
+    onEnter:
+      - "logEnteringC"
+    transitions:
+      - event: "event_to_D"
+        target: "D"
+
+  D:
+    name: D
+    onEnter:
+      - "logEnteringD"
 ```
 
-### Example with All Features
+## Implementing Business Logic
+
+Your Go code provides the implementation for the names defined in the YAML.
+
+```go
+package core
+
+import (
+    "context"
+    "fmt"
+    "log/slog"
+)
+
+// An ActionFunc executes logic. It can modify and return the data map.
+func PerformActionForB(ctx context.Context, data map[string]any) (map[string]any, error) {
+    slog.Info("Performing action for state B", "data", data)
+    data["action_B_executed_at"] = time.Now()
+    return data, nil
+}
+
+// A ConditionFunc acts as a guard. It must return true for the transition to proceed.
+func IsConditionForB_True(ctx context.Context, data map[string]any) (bool, error) {
+    someValue, ok := data["some_key"].(int)
+    if !ok {
+        return false, nil // Or return an error
+    }
+    isValid := someValue > 10
+    slog.Info("Checked condition for B", "isValid", isValid)
+    return isValid, nil
+}
+```
+
+## Putting It All Together
+
+Here is how you load the definition, register your functions, and run the state machine.
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "log/slog"
+    "github.com/rahulpahuja/go-machina/machina"
+    "github.com/rahulpahuja/go-machina/core" // Your package with implementations
+)
+
+func main() {
+    definition, err := machina.LoadWorkflowDefinition("workflow.yaml")
+    if err != nil { log.Fatal(err) }
+
+    registry := machina.NewRegistry()
+    registry.RegisterCondition("isConditionForB_true", core.IsConditionForB_True)
+    registry.RegisterAction("performActionForB", core.PerformActionForB)
+    // ... register all other log actions
+
+    logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+    fsm := machina.NewStateMachine(definition, registry, logger)
+
+    ctx := context.Background()
+    currentState := definition.InitialState
+    currentData := map[string]any{"some_key": 42}
+    
+    event := "event_to_B"
+
+    // Loop to handle auto-events until a stable state is reached
+    for {
+        slog.Info("Triggering event", "state", currentState, "event", event)
+        result, err := fsm.Trigger(ctx, currentState, event, currentData)
+        if err != nil { log.Fatalf("Workflow transition failed: %v", err) }
+
+        currentState = result.NewState
+        currentData = result.PersistenceData
+
+        if result.AutoEvent != "" {
+            event = result.AutoEvent
+            continue
+        }
+        break
+    }
+    log.Printf("Workflow finished. Final state: %s", currentState)
+}
+```
+
+## Advanced Pattern: Side Quests
+
+A "Side Quest" is a temporary diversion from a primary workflow. This powerful pattern allows you to model complex user journeys, such as filling out a sub-form before returning to the main flow.
+
+This is achieved with two core mechanisms:
+
+1.  **The Workflow Stack**: A list of state names, acting as a "breadcrumb trail." This is managed by your actions and stored in the data map, typically under the key `workflow_stack`.
+2.  **Dynamic Transition Target**: An action can dynamically set the next state by returning a special `__next_state_override` key in its results. The built-in `__RETURN_TO_PREVIOUS_STATE__` action does this by popping a state from the `workflow_stack`.
+
+Below is a complete example demonstrating this pattern.
+
+**1. The YAML Configuration**
 
 ```yaml
-initialState: draft
+# workflow.yaml
 states:
-  draft:
-    name: draft
-    onEnter:
-      - "logDraftCreated"
+  # ... other states like A, B, C ...
+
+  D:
+    name: D
+    onEnter: ["logAction"]
     transitions:
-      - event: "submit"
-        target: "review"
-        conditions:
-          - "isValidSubmission"
+      - event: "next"
+        target: "E"
+      # This transition initiates the side quest from state D.
+      - event: "start_side_quest"
+        target: "B_sharp" # The side quest state.
         actions:
-          - "saveSubmission"
-  
-  review:
-    name: review
-    onEnter:
-      - "logReviewStarted"
-      - "notifyReviewers"
+          # This user-defined action pushes the current state ("D") onto the stack.
+          - "pushCurrentStateToStack"
+
+  E:
+    name: E
+    onEnter: ["logAction"]
+
+  # --- Side Quest State --- 
+  B_sharp:
+    name: B_sharp
+    isSideQuest: true # Optional flag to identify this as a side quest.
+    onEnter: ["logAction"]
     transitions:
-      - event: "approve"
-        target: "approved"
+      # This transition completes the side quest and returns to the main flow.
+      - event: "complete_and_return"
+        # The target is empty because the action will determine it dynamically.
+        target: ""
         actions:
-          - "logApproval"
-      - event: "reject"
-        target: "rejected"
-        actions:
-          - "logRejection"
-          - "notifySubmitter"
-        autoEvent: "notify"
-  
-  approved:
-    name: approved
-    onEnter:
-      - "logApproved"
-      - "publishContent"
-  
-  rejected:
-    name: rejected
-    onEnter:
-      - "logRejected"
+          # This special, built-in action pops a state from the workflow stack
+          # and sets it as the dynamic target for this transition.
+          - "__RETURN_TO_PREVIOUS_STATE__"
 ```
 
-## Implementation
+**2. The Go Implementation**
 
-### Condition Functions
-
-Conditions are functions that determine whether a transition should occur. They must have the signature:
+You only need to implement the action that pushes the state onto the stack. `__RETURN_TO_PREVIOUS_STATE__` is provided by the engine.
 
 ```go
-type ConditionFunc func(ctx context.Context, data map[string]any) (bool, error)
-```
-
-Example:
-```go
-func IsPaymentAmountValid(ctx context.Context, data map[string]any) (bool, error) {
-    amount, ok := data["amount"].(float64)
+// pushCurrentStateToStack adds the current state name to a list in the data map.
+func pushCurrentStateToStack(ctx context.Context, data map[string]any) (map[string]any, error) {
+    // The FSM passes the source state name in the context.
+    sourceState, ok := machina.GetSourceState(ctx)
     if !ok {
-        return false, fmt.Errorf("amount not found")
+        return nil, fmt.Errorf("could not determine source state")
     }
+
+    // Get or create the stack from the data map using the 'workflow_stack' key.
+    var stack []string
+    if val, ok := data["workflow_stack"]; ok {
+        stack = val.([]string)
+    }
+
+    // Push the source state onto the stack.
+    stack = append(stack, sourceState)
+    data["workflow_stack"] = stack
     
-    // Payment must be at least $1
-    return amount >= 1.0, nil
+    slog.Info("Pushed state to stack", "state", sourceState, "newStack", stack)
+    return data, nil
 }
 ```
 
-### Action Functions
+## API Design & Philosophy
 
-Actions are functions that perform business logic during transitions. They must have the signature:
+GoMachina is built on a set of core design principles:
 
-```go
-type ActionFunc func(ctx context.Context, data map[string]any) (map[string]any, error)
-```
-
-Example:
-```go
-func SendEmailNotification(ctx context.Context, data map[string]any) (map[string]any, error) {
-    email, ok := data["email"].(string)
-    if !ok {
-        return nil, fmt.Errorf("email not found")
-    }
-    
-    subject, ok := data["subject"].(string)
-    if !ok {
-        return nil, fmt.Errorf("subject not found")
-    }
-    
-    message, ok := data["message"].(string)
-    if !ok {
-        return nil, fmt.Errorf("message not found")
-    }
-    
-    // In a real implementation, you would send the email
-    log.Printf("Sending email to %s: %s", email, subject)
-    
-    return map[string]any{
-        "emailSentAt": time.Now(),
-        "emailStatus": "sent",
-    }, nil
-}
-```
-
-### Lifecycle Hooks
-
-GoMachina supports three types of lifecycle hooks:
-1. **OnEnter**: Executed when entering a state
-2. **Transition Actions**: Executed during a transition
-3. **OnLeave**: Executed when leaving a state
-
-The execution order is:
-1. Source state's OnLeave actions
-2. Transition actions
-3. Target state's OnEnter actions
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Run the example server
-make run
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-coverage
-
-# Build the binary
-make build
-
-# Install dependencies
-make deps
-
-# Clean build artifacts
-make clean
-```
-
-### Advanced Usage Patterns
-
-#### 1. Context Integration
-
-```go
-// Create a context with timeout
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-
-// Trigger transition with context
-result, err := fsm.Trigger(ctx, currentState, event, data)
-```
-
-#### 2. Guard Conditions
-
-```go
-// Add runtime guard conditions
-result, err := fsm.Trigger(ctx, currentState, event, data, 
-    func(ctx context.Context, data map[string]any) (bool, error) {
-        // Custom guard condition
-        return data["allowTransition"] == true, nil
-    })
-```
-
-#### 3. Error Handling
-
-```go
-result, err := fsm.Trigger(ctx, currentState, event, data)
-if err != nil {
-    // Handle different types of errors
-    switch {
-    case errors.Is(err, machina.ErrStateNotFound):
-        log.Printf("State not found: %v", err)
-    case errors.Is(err, machina.ErrTransitionNotFound):
-        log.Printf("Transition not found: %v", err)
-    case errors.Is(err, machina.ErrConditionFailed):
-        log.Printf("Condition failed: %v", err)
-    default:
-        log.Printf("Unexpected error: %v", err)
-    }
-    return
-}
-```
+-   **Context Propagation**: All operations accept a `context.Context` for timeouts, cancellation, and passing request-scoped data.
+-   **Idiomatic Errors**: Errors are handled cleanly, returning `error` values and using `errors.Is` for inspection.
+-   **Concurrency Safety**: The FSM engine is stateless and safe for concurrent use. The registry is protected by mutexes.
+-   **Extensibility (Strategy Pattern)**: The use of `ActionFunc` and `ConditionFunc` with a central registry allows infinite extension without modifying the core library.
+-   **Observability (Observer Pattern)**: The observability hooks for logging, metrics, and tracing allow external systems to monitor the FSM without tight coupling.
 
 ## Observability
 
-### Logging
-
-GoMachina uses structured logging with the `log/slog` package. You can provide your own logger:
+Inject your own logger, Prometheus registry, and OpenTelemetry tracer upon initialization.
 
 ```go
-logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-    Level: slog.LevelDebug,
-}))
-fsm := machina.NewStateMachine(definition, registry, logger)
-```
-
-### Metrics
-
-Metrics are exposed via Prometheus:
-
-```go
-// Enable metrics
-promRegistry := prometheus.NewRegistry()
 fsm := machina.NewStateMachine(definition, registry, logger,
-    machina.WithMetrics(promRegistry))
-
-// Register with default Prometheus registry if needed
-prometheus.MustRegister(promRegistry)
+    machina.WithMetrics(promRegistry),
+    machina.WithTracer(tracer),
+)
 ```
 
-Available metrics:
-- `fsm_transitions_total`: Count of state transitions
-- `fsm_transition_duration_seconds`: Duration of transitions
-- `fsm_auto_transitions_total`: Count of auto-transitions
-- `fsm_transition_errors_total`: Count of transition errors
+-   **Logging**: Provides structured logs with details like `state`, `event`, `transition`, and `duration_ms` for every step.
+-   **Metrics**:
+    -   `fsm_transitions_total`: Total count of state transitions (labeled by state, event, and target).
+    -   `fsm_transition_duration_seconds`: Histogram of transition durations.
+    -   `fsm_transition_errors_total`: Total count of errors during transitions.
+-   **Tracing**: Creates spans for each transition, allowing you to visualize the workflow in distributed tracing systems.
 
-### Tracing
+## For Contributors
 
-Distributed tracing is supported via OpenTelemetry:
-
-```go
-// Enable tracing
-tracer := otel.Tracer("my-service")
-fsm := machina.NewStateMachine(definition, registry, logger,
-    machina.WithTracer(tracer))
-```
-
-## Advanced Features
-
-### Auto-Events
-
-Auto-events allow for seamless workflow execution without external triggering:
-
-```yaml
-transitions:
-  - event: "approve"
-    target: "approved"
-    autoEvent: "notify"  # Automatically trigger "notify" event
-```
-
-In code:
-```go
-for {
-    result, err := fsm.Trigger(ctx, currentState, event, data)
-    if err != nil {
-        // Handle error
-        break
-    }
-    
-    currentState = result.NewState
-    data = result.PersistenceData
-    
-    // Auto-trigger next event if specified
-    if result.AutoEvent != "" {
-        event = result.AutoEvent
-        continue
-    }
-    
-    break
-}
-```
-
-### Validation
-
-Workflow definitions are automatically validated:
-- All states must have matching names
-- Transitions must have events and targets
-- Initial state must exist if specified
-- Referenced conditions and actions must be registered
-
-### Concurrency Safety
-
-The state machine is safe for concurrent use:
-- Registry uses mutexes to protect shared state
-- State machine engine is stateless (state is passed as parameters)
-- All public APIs are safe for concurrent access
-
-## Development
-
-### Prerequisites
-
-- Go 1.21 or higher
-- Make
-
-### Make Commands
-
-```bash
-# Install dependencies
-make deps
-
-# Build the project
-make build
-
-# Run the example server
-make run
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-coverage
-
-# Run benchmarks
-make bench
-
-# Lint the code
-make lint
-
-# Format the code
-make fmt
-
-# Clean build artifacts
-make clean
-
-# Generate mocks
-make generate
-
-# Run all checks (test, lint, etc.)
-make check
-```
+We welcome contributions! Here is what you need to know.
 
 ### Project Structure
-
 ```
 /go-machina/
-├── /cmd/
-│   └── /server/           # Example server application
-├── /configs/              # Configuration files
-│   └── workflow.yaml      # Example workflow definition
-├── /internal/             # Internal packages
-│   └── /core/             # Example implementations
-├── /machina/              # Core library
-│   ├── definition.go      # Workflow definition types
-│   ├── fsm.go             # State machine implementation
-│   ├── registry.go        # Condition/action registry
-│   ├── metrics.go         # Observability metrics
-│   ├── loader.go          # Configuration loader
-│   ├── validation.go      # Workflow validation
-│   └── interfaces.go      # Type definitions
-├── /tools/                # Development tools
+├── /examples/             # Example applications demonstrating features
+├── /machina/              # Core library source code
+│   ├── definition.go      # Structs for YAML parsing
+│   ├── fsm.go             # The state machine engine
+│   ├── registry.go        # The action/condition registry
+│   ├── metrics.go         # Prometheus metrics implementation
+│   ├── loader.go          # YAML/JSON configuration loader
+│   ├── validation.go      # Workflow validation logic
+│   └── interfaces.go      # Core type definitions (ActionFunc, etc.)
 ├── Makefile               # Build automation
 ├── go.mod                 # Go module definition
-├── go.sum                 # Go module checksums
-├── README.md              # This file
-└── gomachina_blueprint.md # Project blueprint
+└── README.md              # This file
 ```
 
-## Testing
+### Development Workflow
 
-### Running Tests
+This project uses `make` for common development tasks.
 
-```bash
-# Run all tests
-make test
+-   `make check`: Run all linters and tests.
+-   `make test`: Run all tests.
+-   `make test-coverage`: Run tests and view coverage.
+-   `make lint`: Run the linter.
+-   `make fmt`: Format the code.
 
-# Run tests with verbose output
-make test-verbose
+## Roadmap
 
-# Run tests with coverage
-make test-coverage
-
-# Run specific package tests
-make test-unit
-make test-integration
-```
-
-### Test Structure
-
-```
-/machina/
-├── *_test.go              # Unit tests
-├── *_benchmark_test.go    # Benchmarks
-├── *_error_test.go        # Error condition tests
-└── /cmd/server/
-    └── integration_test.go # Integration tests
-```
-
-### Writing Tests
-
-Example test for a condition:
-
-```go
-func TestIsUserValidCondition(t *testing.T) {
-    ctx := context.Background()
-    
-    // Test valid user
-    data := map[string]any{
-        "user": map[string]any{
-            "id": "user123",
-        },
-    }
-    
-    valid, err := IsUserValidCondition(ctx, data)
-    if err != nil {
-        t.Errorf("Expected no error, got %v", err)
-    }
-    
-    if !valid {
-        t.Error("Expected user to be valid")
-    }
-    
-    // Test invalid user
-    invalidData := map[string]any{
-        "user": map[string]any{
-            "id": "",
-        },
-    }
-    
-    valid, err = IsUserValidCondition(ctx, invalidData)
-    if err != nil {
-        t.Errorf("Expected no error, got %v", err)
-    }
-    
-    if valid {
-        t.Error("Expected user to be invalid")
-    }
-}
-```
-
-## Contributing
-
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a pull request
+-   **State Persistence**: Built-in support for persisting workflow state to databases.
+-   **Workflow Visualization**: Tools to generate diagrams from YAML definitions.
+-   **Hierarchical State Machines**: Support for nested state machines.
+-   **Time-based Transitions**: Trigger transitions after a certain amount of time has passed.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
